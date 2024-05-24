@@ -2,16 +2,16 @@
 Better IPC
 ~~~~~~~~~~
 
-High-performance inter-process communication 
-library designed to work with the latest version of discord.py
+High-performance inter-process communication
+library designed to work with the latest version of hikari-lightbulb
 
 :copyright: (C) 2022 DaPandaOfficial
 :license: GNU GENERAL PUBLIC LICENSE
 """
-import discord
+# import lightbulb
 
-if discord.version_info.major < 2:
-    raise RuntimeError("You must have discord.py (v2.0 or greater) to use this library.")
+# if lightbulb.version_info.major < 2:
+#     raise RuntimeError("You must have hikari-lightbulb (v2.0 or greater) to use this library.")
 
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"

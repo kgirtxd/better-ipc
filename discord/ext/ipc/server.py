@@ -6,7 +6,7 @@ import json
 import contextlib
 import inspect
 
-from discord.ext.commands import Bot, Cog
+from lightbulb import BotApp, Plugin
 from typing import TYPE_CHECKING, Optional, Callable, ClassVar, TypeVar, Union, Type, Awaitable, Tuple, Any, Dict
 
 from websockets.exceptions import ConnectionClosedError, ConnectionClosed
@@ -18,10 +18,10 @@ from .objects import ClientPayload
 
 if TYPE_CHECKING:
     from typing_extensions import ParamSpec, TypeAlias
-    
+
     P = ParamSpec("P")
     T = TypeVar("T")
-    
+
     RouteFunc: TypeAlias = Callable[P, T]
     Handler = Callable[[WebSocketServerProtocol], Awaitable[Any]]
 
@@ -51,9 +51,9 @@ class Server:
 
     def __init__(
         self,
-        bot: Bot,
-        host: str = "127.0.0.1", 
-        secret_key: Union[str, None] = None, 
+        bot: BotApp,
+        host: str = "127.0.0.1",
+        secret_key: Union[str, None] = None,
         standard_port: int = 1025,
         multicast_port: int = 20000,
         do_multicast: bool = True,
@@ -73,8 +73,8 @@ class Server:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} endpoints={len(self.endpoints)} started={self.started} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
 
-    def get_cls(self, func: RouteFunc) -> Union[Cog, Bot]:
-        for cog in self.bot.cogs.values():
+    def get_cls(self, func: RouteFunc) -> Union[Plugin, BotApp]:
+        for cog in self.bot.plugins.values():
             if func.__name__ in dir(cog):
                 return cog
         return self.bot
@@ -115,7 +115,7 @@ class Server:
         if (key := data.get("secret")):
             return str(key) == str(self.secret_key)
         return bool(self.secret_key is None)
-    
+
 
     async def handle_request(self, websocket: WebSocketServerProtocol, message: Union[str, bytes], multucast: bool = True) -> None:
         payload: Dict[str, Union[str, int, None]] = {
@@ -123,7 +123,7 @@ class Server:
             "code": 200,
             "response": None
         }
-        
+
         if not self.is_secure(message):
             payload["code"] = 403
             payload["error"] = "Unauthorized"
@@ -139,7 +139,7 @@ class Server:
             payload["error_details"] = "The route that you're trying to call doesn't exist!"
             self.bot.dispatch("ipc_error", None, NoEndpointFound(endpoint, "The route that you're trying to call doesn't exist!"))
             return await websocket.send(json.dumps(payload))
-        
+
         try:
             func = coro[0]
 
@@ -158,31 +158,31 @@ class Server:
 
             self.bot.dispatch("ipc_error", endpoint, exc)
             return await websocket.send(json.dumps(payload))
-        
+
         if resp and not (isinstance(resp, Dict) or isinstance(resp, str)):
             payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!"
             payload["code"] = 500
             self.bot.dispatch("ipc_error", endpoint, InvalidReturn(endpoint, f"Expected type Dict or string as response, got {resp.__class__.__name__} instead!"))
             return await websocket.send(json.dumps(payload))
-        
+
         if isinstance(resp, Dict):
             payload["decoding"] = "JSON"
             payload["response"] = json.dumps(resp)
         else:
             payload["response"] = resp
-        
+
         return await websocket.send(json.dumps(payload))
 
     async def create_server(self, name: str, port: int, ws_handler: Handler) -> None:
         if name in self.servers:
             raise ServerAlreadyStarted(name, f"{name!r} is already started!")
-        
+
         self.servers[name] = await serve(ws_handler, self.host, port)
         self.logger.debug(f"{name.title()} is ready for use!")
 
     async def standart_handler(self, websocket: WebSocketServerProtocol) -> None:
         id = websocket.request_headers["ID"]
-        
+
         try:
             if self.connection:
                 if not self.connection[0] == id:
@@ -191,20 +191,20 @@ class Server:
                         "details": self.connection[0],
                         "code": 422
                     })
-                    
+
                     return await websocket.send(resp)
             else:
                 self.logger.debug(f"New connection created: {id}")
                 self.connection = id, websocket
-        
+
             async for message in websocket:
                 with contextlib.suppress(ConnectionClosedError, ConnectionClosed):
                     await asyncio.create_task(self.handle_request(websocket, message, False))
-            
+
         except (ConnectionClosedError, ConnectionClosed):
             self.logger.debug(f"Connection closed by the client: {self.connection[0]}") # type: ignore
             self.connection = None
-    
+
     async def multicast_handler(self, websocket: WebSocketServerProtocol) -> None:
         with contextlib.suppress(ConnectionClosedError, ConnectionClosed):
             async for message in websocket:
@@ -212,7 +212,7 @@ class Server:
 
     async def start(self) -> None:
         """|coro|
-        
+
         Starts all necessary processes for the servers and runners to work properly
 
         """
@@ -222,7 +222,7 @@ class Server:
             await self.create_server("mutlicast", self.multicast_port, self.multicast_handler)
 
         self.bot.dispatch("ipc_ready")
-    
+
     async def stop(self) -> None:
         """|coro|
 
@@ -233,5 +233,5 @@ class Server:
             server.close()
             await server.wait_closed()
             self.logger.info(f"{name!r} server has been stopped!")
-        
+
         self.servers = {}
