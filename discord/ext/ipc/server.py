@@ -13,6 +13,7 @@ from websockets.exceptions import ConnectionClosedError, ConnectionClosed
 from websockets.server import WebSocketServerProtocol, WebSocketServer, serve
 
 from .errors import InvalidReturn, NoEndpointFound, MulticastFailure, ServerAlreadyStarted
+from .events import IPCError, IPCReady
 from .objects import ClientPayload
 
 
@@ -137,7 +138,7 @@ class Server:
             payload["code"] = 404
             payload["error"] = "Unknown endpoint!"
             payload["error_details"] = "The route that you're trying to call doesn't exist!"
-            self.bot.dispatch("ipc_error", None, NoEndpointFound(endpoint, "The route that you're trying to call doesn't exist!"))
+            self.bot.dispatch(IPCError(None, NoEndpointFound(endpoint, "The route that you're trying to call doesn't exist!")))
             return await websocket.send(json.dumps(payload))
 
         try:
@@ -147,7 +148,7 @@ class Server:
                 payload["code"] = 500
                 payload["error"] = "The requested route is not available for multicast connections!"
                 payload["error_details"] = "This route can only be called with standart client!"
-                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, "This route can only be called with standart client!"))
+                self.bot.dispatch(IPCError(endpoint, MulticastFailure(endpoint, "This route can only be called with standart client!")))
                 return await websocket.send(json.dumps(payload))
 
             resp: Optional[Union[Dict, str]] = await func(self.get_cls(func), coro[1](data))
@@ -156,13 +157,13 @@ class Server:
             payload["error"] = "Unexpected error occurred while calling the route!"
             payload["error_details"] = str(exc)
 
-            self.bot.dispatch("ipc_error", endpoint, exc)
+            self.bot.dispatch(IPCError(endpoint, exc))
             return await websocket.send(json.dumps(payload))
 
         if resp and not (isinstance(resp, Dict) or isinstance(resp, str)):
             payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!"
             payload["code"] = 500
-            self.bot.dispatch("ipc_error", endpoint, InvalidReturn(endpoint, f"Expected type Dict or string as response, got {resp.__class__.__name__} instead!"))
+            self.bot.dispatch(IPCError(endpoint, InvalidReturn(endpoint, f"Expected type Dict or string as response, got {resp.__class__.__name__} instead!")))
             return await websocket.send(json.dumps(payload))
 
         if isinstance(resp, Dict):
@@ -221,7 +222,7 @@ class Server:
         if self.do_multicast:
             await self.create_server("mutlicast", self.multicast_port, self.multicast_handler)
 
-        self.bot.dispatch("ipc_ready")
+        self.bot.dispatch(IPCReady)
 
     async def stop(self) -> None:
         """|coro|
